@@ -32,7 +32,7 @@ import argparse
 import imagehash
 import json
 from PIL import Image
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import base64
 import pickle
 import math
@@ -41,16 +41,18 @@ import threading
 import logging
 import csv
 from sklearn.decomposition import PCA
-from sklearn.grid_search import GridSearchCV
+from sklearn.model_selection import GridSearchCV
 from sklearn.manifold import TSNE
 from sklearn.svm import SVC
 import time
+
 start = time.time()
 from operator import itemgetter
 import numpy as np
 import pandas as pd
 import Camera
-import openface
+
+# import openface
 
 np.set_printoptions(precision=2)
 
@@ -71,46 +73,49 @@ parser.add_argument('--unknown', type=bool, default=False,
                     help='Try to predict unknown people')
 args = parser.parse_args()
 
-
 cascade_lock = threading.Lock()
 facecascade = cv2.CascadeClassifier("cascades/haarcascade_frontalface_alt2.xml")
 uppercascade = cv2.CascadeClassifier("cascades/haarcascade_upperbody.xml")
 eyecascade = cv2.CascadeClassifier("cascades/haarcascade_eye.xml")
 detector = dlib.get_frontal_face_detector()
-    
+
+
 def resize(frame):
     r = 640.0 / frame.shape[1]
     dim = (640, int(frame.shape[0] * r))
     # Resize frame to be processed
-    frame = cv2.resize(frame, dim, interpolation = cv2.INTER_AREA)    
-    return frame 
+    frame = cv2.resize(frame, dim, interpolation=cv2.INTER_AREA)
+    return frame
+
 
 def resize_mjpeg(frame):
     r = 320.0 / frame.shape[1]
-    dim = (320, 200)#int(frame.shape[0] * r))
+    dim = (320, 200)  # int(frame.shape[0] * r))
     # perform the actual resizing of the image and show it
-    frame = cv2.resize(frame, dim, interpolation = cv2.INTER_AREA)    
-    return frame  
+    frame = cv2.resize(frame, dim, interpolation=cv2.INTER_AREA)
+    return frame
 
-def crop(image, box, dlibRect = False):
 
+def crop(image, box, dlibRect=False):
     if dlibRect == False:
-       x, y, w, h = box
-       return image[y: y + h, x: x + w] 
+        x, y, w, h = box
+        return image[y: y + h, x: x + w]
 
     return image[box.top():box.bottom(), box.left():box.right()]
+
 
 def is_inside(o, i):
     ox, oy, ow, oh = o
     ix, iy, iw, ih = i
     return ox > ix and oy > iy and ox + ow < ix + iw and oy + oh < iy + ih
 
+
 def draw_boxes(image, rects, dlibrects):
-   if dlibrects:
-       image = draw_rects_dlib(image, rects)
-   else:
-       image = draw_rects_cv(image, rects)
-   return image
+    if dlibrects:
+        image = draw_rects_dlib(image, rects)
+    else:
+        image = draw_rects_cv(image, rects)
+    return image
 
 
 def draw_rects_cv(img, rects, color=(0, 40, 255)):
@@ -118,52 +123,60 @@ def draw_rects_cv(img, rects, color=(0, 40, 255)):
     output = img.copy()
     count = 1
     for x, y, w, h in rects:
-        cv2.rectangle(overlay, (x, y), (x+w, y+h), color, 2)
+        cv2.rectangle(overlay, (x, y), (x + w, y + h), color, 2)
         cv2.addWeighted(overlay, 0.5, output, 0.5, 0, output)
     return output
-   
-def draw_rects_dlib(img, rects, color = (0, 255, 255)):
+
+
+def draw_rects_dlib(img, rects, color=(0, 255, 255)):
     overlay = img.copy()
     output = img.copy()
-      
+
     for bb in rects:
-        bl = (bb.left(), bb.bottom()) # (x, y)
-        tr = (bb.right(), bb.top()) # (x+w,y+h)
+        bl = (bb.left(), bb.bottom())  # (x, y)
+        tr = (bb.right(), bb.top())  # (x+w,y+h)
         cv2.rectangle(overlay, bl, tr, color, thickness=2)
-        cv2.addWeighted(overlay, 0.5, output, 0.5, 0, output)       
+        cv2.addWeighted(overlay, 0.5, output, 0.5, 0, output)
     return output
+
 
 def draw_text(image, persondict):
-    cv2.putText(image,  str(persondict['name']) + " " + str(math.ceil(persondict['confidence']*100))+ "%", (bb.left()-15, bb.bottom() + 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.25,
-                    color=(152, 255, 204), thickness=1)
+    cv2.putText(image, str(persondict['name']) + " " + str(math.ceil(persondict['confidence'] * 100)) + "%",
+                (bb.left() - 15, bb.bottom() + 10),
+                cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.25,
+                color=(152, 255, 204), thickness=1)
 
-def draw_rect(img,x,y,w,h, color=(0, 40, 255)):
+
+def draw_rect(img, x, y, w, h, color=(0, 40, 255)):
     overlay = img.copy()
-    output = img.copy()   
-    cv2.rectangle(overlay, (x, y), (x+w, y+h), color, 2)
+    output = img.copy()
+    cv2.rectangle(overlay, (x, y), (x + w, y + h), color, 2)
     cv2.addWeighted(overlay, 0.5, output, 0.5, 0, output)
     return output
+
 
 def draw_rects_dlib(img, rects):
     overlay = img.copy()
     output = img.copy()
     for bb in rects:
-        bl = (bb.left(), bb.bottom()) # (x, y)
-        tr = (bb.right(), bb.top()) # (x+w,y+h)
+        bl = (bb.left(), bb.bottom())  # (x, y)
+        tr = (bb.right(), bb.top())  # (x+w,y+h)
         cv2.rectangle(overlay, bl, tr, color=(0, 255, 255), thickness=2)
-        cv2.addWeighted(overlay, 0.5, output, 0.5, 0, output)       
+        cv2.addWeighted(overlay, 0.5, output, 0.5, 0, output)
     return output
 
+
 def detect_upper_cascade(img):
-    rects = uppercascade.detectMultiScale(img, scaleFactor=1.2, minNeighbors=4, minSize=(30, 30), flags = cv2.CASCADE_SCALE_IMAGE)
+    rects = uppercascade.detectMultiScale(img, scaleFactor=1.2, minNeighbors=4, minSize=(30, 30),
+                                          flags=cv2.CASCADE_SCALE_IMAGE)
     return rects
+
 
 def detect_people_hog(image):
     image = rgb_pre_processing(image)
     hog = cv2.HOGDescriptor()
     hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-    found, w = hog.detectMultiScale(image,winStride=(30,30),padding=(16,16), scale=1.1)
+    found, w = hog.detectMultiScale(image, winStride=(30, 30), padding=(16, 16), scale=1.1)
     filtered_detections = []
     for ri, r in enumerate(found):
         for qi, q in enumerate(found):
@@ -171,44 +184,49 @@ def detect_people_hog(image):
                 break
         else:
             filtered_detections.append(r)
-    image = draw_rects_cv(image, filtered_detections)  
- 
+    image = draw_rects_cv(image, filtered_detections)
+
     return image
 
-def pre_processing(image):  
-     grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-     cl1 = clahe.apply(grey)
-     cv2.imwrite('clahe_2.jpg',cl1)
-     return cl1
+
+def pre_processing(image):
+    grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    cl1 = clahe.apply(grey)
+    cv2.imwrite('clahe_2.jpg', cl1)
+    return cl1
+
 
 def detect_people_cascade(image):
     image = rgb_pre_processing(image)
     rects = detect_cascade(image, uppercascade)
-    image = draw_rects_cv(image, rects,color=(0, 255, 0))  
+    image = draw_rects_cv(image, rects, color=(0, 255, 0))
     return image
+
 
 def detectopencv_face(image):
     image = pre_processing(image)
     rects = detect_cascadeface(image)
-  
+
     return rects
+
 
 def detectlight_face(image):
     image = pre_processing(image)
-    rectscv = detect_cascade(image,facecascade)
+    rectscv = detect_cascade(image, facecascade)
     processedimg = draw_rects_cv(image, rectscv)
     rectsdlib = detectdlibgrey_face(image)
     processedimg = draw_rects_dlib(processedimg, rectsdlib)
 
-    cv2.imwrite('RGBlighting_Normalization.jpg',processedimg)
+    cv2.imwrite('RGBlighting_Normalization.jpg', processedimg)
 
 
 def detectdlibgrey_face(grey):
-    bbs = detector(grey,1)
+    bbs = detector(grey, 1)
     return bbs
 
-def detectdlib_face(img,height,width):
+
+def detectdlib_face(img, height, width):
     buf = np.asarray(img)
     rgbFrame = np.zeros((height, width, 3), dtype=np.uint8)
     rgbFrame[:, :, 0] = buf[:, :, 2]
@@ -218,10 +236,10 @@ def detectdlib_face(img,height,width):
     annotatedFrame = np.copy(buf)
     bbs = align.getAllFaceBoundingBoxes(rgbFrame)
 
-    return bbs #, annotatedFrame
+    return bbs  # , annotatedFrame
 
 
-def convertImageToNumpyArray(img,height,width): # Numpy array used by dlib for image operations
+def convertImageToNumpyArray(img, height, width):  # Numpy array used by dlib for image operations
     buf = np.asarray(img)
     rgbFrame = np.zeros((height, width, 3), dtype=np.uint8)
     rgbFrame[:, :, 0] = buf[:, :, 2]
@@ -231,9 +249,7 @@ def convertImageToNumpyArray(img,height,width): # Numpy array used by dlib for i
     return annotatedFrame
 
 
-def writeToFile(filename,lineString): # Used for writing testing data to file
-       f = open(filename,"a") 
-       f.write(lineString + "\n")    
-       f.close()
-
-
+def writeToFile(filename, lineString):  # Used for writing testing data to file
+    f = open(filename, "a")
+    f.write(lineString + "\n")
+    f.close()

@@ -76,7 +76,7 @@ class Image:
 
 
 def iterImgs(directory):
-    u"""
+    """
     Iterate through the images in a directory.
 
     The images should be organized in subdirectories

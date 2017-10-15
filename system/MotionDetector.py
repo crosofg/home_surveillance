@@ -107,7 +107,7 @@ class MotionDetector(object):
             thresh = cv2.dilate(thresh, kernel, iterations=3) # Increases white region by saturating blobs
             cv2.imwrite("motion.jpg", thresh)
             (cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
-                cv2.CHAIN_APPROX_SIMPLE)
+                cv2.CHAIN_APPROX_SIMPLE)[-2:]
             logger.debug('////////////////////// filtering & thresholding //////////////////////')
             self.peopleRects = []
             # Loop through all contours

@@ -118,7 +118,7 @@ stdout: {}
         except Exception as e:
             self.p.kill()
             stdout, stderr = self.p.communicate()
-            print("""
+            print(("""
 
 
 Error getting result from Torch subprocess.
@@ -132,7 +132,7 @@ Exception:
 ============
 
 stdout: {}
-""".format(output, str(e), stdout))
+""".format(output, str(e), stdout)))
             sys.exit(-1)
 
     def forward(self, rgbImg):

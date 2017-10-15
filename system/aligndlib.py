@@ -21,9 +21,9 @@ import os
 import random
 import shutil
 
-import openface
-import openface.helper
-from openface.data import iterImgs
+# import openface
+# import openface.helper
+# from openface.data import iterImgs
 
 fileDir = os.path.dirname(os.path.realpath(__file__))
 modelDir = os.path.join(fileDir, '..', 'models')
@@ -33,7 +33,7 @@ openfaceModelDir = os.path.join(modelDir, 'openface')
 
 def write(vals, fName):
     if os.path.isfile(fName):
-        print("{} exists. Backing up.".format(fName))
+        print(("{} exists. Backing up.".format(fName)))
         os.rename(fName, "{}.bak".format(fName))
     with open(fName, 'w') as f:
         for p in vals:
@@ -97,7 +97,7 @@ def alignMain(inputDir,outputDir,landmarks,dlibFacePredictor,size):
 
     nFallbacks = 0
     for imgObject in imgs:
-        print("=== {} ===".format(imgObject.path))
+        print(("=== {} ===".format(imgObject.path)))
         outDir = os.path.join(outputDir, imgObject.cls)
         openface.helper.mkdirP(outDir)
         outputPrefix = os.path.join(outDir, imgObject.name)

@@ -34,7 +34,7 @@ import datetime
 import threading
 import logging
 from sklearn.decomposition import PCA
-from sklearn.grid_search import GridSearchCV
+from sklearn.model_selection import GridSearchCV
 from sklearn.manifold import TSNE
 from sklearn.svm import SVC
 import time
@@ -47,8 +47,10 @@ from subprocess import Popen, PIPE
 import os.path
 import numpy as np
 import pandas as pd
-import aligndlib
-import openface
+# import aligndlib
+from imutils.face_utils import FaceAligner
+import face_recognition_models
+import face_recognition
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +81,17 @@ class FaceRecogniser(object):
     below allow a user to retrain the classifier and make predictions
     on detected faces"""
 
-    def __init__(self):
-        self.net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,cuda=args.cuda)
-        self.align = openface.AlignDlib(args.dlibFacePredictor)
+    def __init__(self,desiredFaceWidth=256):
+        # self.net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,cuda=args.cuda)
+        # self.align = openface.AlignDlib(args.dlibFacePredictor)
+        self.desiredFaceWidth = desiredFaceWidth
         self.neuralNetLock = threading.Lock()
-        self.predictor = dlib.shape_predictor(args.dlibFacePredictor)
+        self.predictor = dlib.shape_predictor(face_recognition_models.pose_predictor_model_location())
+        self.align= FaceAligner(self.predictor, desiredFaceWidth=self.desiredFaceWidth).align
 
         logger.info("Opening classifier.pkl to load existing known faces db")
-        with open("generated-embeddings/classifier.pkl", 'r') as f: # le = labels, clf = classifier
-            (self.le, self.clf) = pickle.load(f) # Loads labels and classifier SVM or GMM
+        # with open("generated-embeddings/classifier.pkl", 'rb') as f: # le = labels, clf = classifier
+        #     (self.le, self.clf) = pickle.load(f,encoding='bytes') # Loads labels and classifier SVM or GMM
 
     def make_prediction(self,rgbFrame,bb):
         """The function uses the location of a face
@@ -97,18 +101,24 @@ class FaceRecogniser(object):
         generates 128 measurements which uniquly identify that face.
         These measurements are known as an embedding, and are used
         by the classifier to predict the identity of the person"""
-
-        landmarks = self.align.findLandmarks(rgbFrame, bb)
-        if landmarks == None:
-            logger.info("///  FACE LANDMARKS COULD NOT BE FOUND  ///")
-            return None
-        alignedFace = self.align.align(args.imgDim, rgbFrame, bb,landmarks=landmarks,landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE)
-
-        if alignedFace is None:
-            logger.info("///  FACE COULD NOT BE ALIGNED  ///")
-            return None
+        gray = cv2.cvtColor(rgbFrame, cv2.COLOR_BGR2GRAY)
+        alignedFace = self.align(rgbFrame,gray, bb)
+        # if landmarks == None:
+        #     logger.info("///  FACE LANDMARKS COULD NOT BE FOUND  ///")
+        #     return None
+        # alignedFace = self.align.align(args.imgDim, rgbFrame, bb,landmarks=landmarks,landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE)
+        #
+        # if alignedFace is None:
+        #     logger.info("///  FACE COULD NOT BE ALIGNED  ///")
+        #     return None
+        #
+        rep=np.random.rand(128,1)
 
         logger.info("////  FACE ALIGNED  // ")
+        # persondict= {'name': "gG", 'confidence': 0.5, 'rep': 0.2}
+        # alignedFace = rgbFrame
+        # return persondict, alignedFace
+
         with self.neuralNetLock :
             persondict = self.recognize_face(alignedFace)
 
@@ -127,11 +137,11 @@ class FaceRecogniser(object):
         rep = rep1.reshape(1, -1)   #take the image and  reshape the image array to a single line instead of 2 dimensionals
         start = time.time()
         logger.info("Submitting array for prediction.")
-        predictions = self.clf.predict_proba(rep).ravel() # Computes probabilities of possible outcomes for samples in classifier(clf).
+        predictions = 0.1#self.clf.predict(rep).ravel() # Computes probabilities of possible outcomes for samples in classifier(clf).
         #logger.info("We need to dig here to know why the probability are not right.")
         maxI = np.argmax(predictions)
-        person1 = self.le.inverse_transform(maxI)
-        confidence1 = int(math.ceil(predictions[maxI]*100))
+        person1 = "gg"#self.le.inverse_transform(maxI)
+        confidence1 = 90#int(math.ceil(predictions[maxI]*100))
 
         logger.info("Recognition took {} seconds.".format(time.time() - start))
         logger.info("Recognized {} with {:.2f} confidence.".format(person1, confidence1))
@@ -149,7 +159,9 @@ class FaceRecogniser(object):
         alignedFace = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
         start = time.time()
         logger.info("Getting embedding for the face")
-        rep = self.net.forward(alignedFace) # Gets embedding - 128 measurements
+        # rep = self.net.forward(alignedFace) # Gets embedding - 128 measurements
+        rep = face_recognition.face_encodings(alignedFace) # Gets embedding - 128 measurements
+        rep=np.asarray(rep)
         return rep
 
     def reloadClassifier(self):
@@ -176,7 +188,7 @@ class FaceRecogniser(object):
             pass
 
         start = time.time()
-        aligndlib.alignMain("training-images/","aligned-images/","outerEyesAndNose",args.dlibFacePredictor,args.imgDim)
+        # aligndlib.alignMain("training-images/","aligned-images/","outerEyesAndNose",args.dlibFacePredictor,args.imgDim)
         logger.info("Aligning images for training took {} seconds.".format(time.time() - start))
         done = False
         start = time.time()
@@ -225,10 +237,10 @@ class FaceRecogniser(object):
         else:
             logger.info(fname + " file is empty")
             labels = "1:aligned-images/dummy/1.png"  #creating a dummy string to start the process
-        logger.debug(map(os.path.dirname, labels))
-        logger.debug(map(os.path.split,map(os.path.dirname, labels)))
-        logger.debug(map(itemgetter(1),map(os.path.split,map(os.path.dirname, labels))))
-        labels = map(itemgetter(1),map(os.path.split,map(os.path.dirname, labels)))
+        logger.debug(list(map(os.path.dirname, labels)))
+        logger.debug(list(map(os.path.split,list(map(os.path.dirname, labels)))))
+        logger.debug(list(map(itemgetter(1),list(map(os.path.split,list(map(os.path.dirname, labels)))))))
+        labels = list(map(itemgetter(1),list(map(os.path.split,list(map(os.path.dirname, labels))))))
 
         fname = "{}reps.csv".format(workDir) # Representations of faces
         fnametest = format(workDir) + "reps.csv"
@@ -267,5 +279,4 @@ class FaceRecogniser(object):
         """Returns number between 0-4, Openface calculated the mean between
         similar faces is 0.99 i.e. returns less than 0.99 if reps both belong
         to the same person"""
-
         d = rep1 - rep2

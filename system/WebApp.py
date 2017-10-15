@@ -17,9 +17,9 @@
 # limitations under the License.
 
 from flask import Flask, render_template, Response, redirect, url_for, request, jsonify, send_file, session, g
-from flask.ext.uploads import UploadSet, configure_uploads, IMAGES
+from flask_uploads import UploadSet, configure_uploads, IMAGES
 import Camera
-from flask.ext.socketio import SocketIO, send, emit 
+from flask_socketio import SocketIO, send, emit
 import SurveillanceSystem
 import json
 import logging
@@ -265,7 +265,7 @@ def add_face():
 def retrain_classifier():
     if request.method == 'POST':
         app.logger.info("retrain button pushed. clearing event in surveillance objt and calling trainingEvent")
-        HomeSurveillance.trainingEvent.clear() # Block processing threads
+        HomeSurveillance.trainingEvent.clear() # Block  processing threads
         retrained = HomeSurveillance.recogniser.trainClassifier()#calling the module in FaceRecogniser to start training
         HomeSurveillance.trainingEvent.set() # Release processing threads       
         data = {"finished":  retrained}
@@ -315,7 +315,7 @@ def update_faces():
         with HomeSurveillance.camerasLock :
             for i, camera in enumerate(HomeSurveillance.cameras):
                 with HomeSurveillance.cameras[i].peopleDictLock:
-                    for key, person in camera.people.iteritems():  
+                    for key, person in camera.people.items():  
                         persondict = {'identity': key , 'confidence': person.confidence, 'camera': i, 'timeD':person.time, 'prediction': person.identity,'thumbnailNum': len(person.thumbnails)}
                         app.logger.info(persondict)
                         peopledata.append(persondict)
@@ -408,7 +408,7 @@ def disconnect():
 
 if __name__ == '__main__':
      # Starts server on default port 5000 and makes socket connection available to other hosts (host = '0.0.0.0')
-     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s -%(funcName)s: - %(lineno)d - %(message)s")
      handler = RotatingFileHandler(LOG_FILE, maxBytes=1000000, backupCount=10)
      handler.setLevel(logging.DEBUG)
      handler.setFormatter(formatter)
